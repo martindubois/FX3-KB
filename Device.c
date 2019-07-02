@@ -3,6 +3,8 @@
 // Product  FX3-KB
 // File     Device.c
 
+// CODE REVIEW  2019-07-01  KMS - Martin Dubois, ing.
+
 // Includes
 /////////////////////////////////////////////////////////////////////////////
 
@@ -19,17 +21,17 @@
 // Constants
 /////////////////////////////////////////////////////////////////////////////
 
-#define THREAD_STACK     (0x0800)
-#define THREAD_PRIORITY  (8)
+#define THREAD_STACK_byte  (0x0800)
+#define THREAD_PRIORITY    (8)
 
 // Static variables
 /////////////////////////////////////////////////////////////////////////////
 
 static CyBool_t  sConfigured = CyFalse;
-static CyBool_t  sConnected  = CyFalse;
 
-static CyU3PUSBSpeed_t sSpeed = CY_U3P_NOT_CONNECTED;
-static CyU3PThread     sThread;
+// sThread must be static because it hold thread information while the thread
+// is running.
+static CyU3PThread  sThread;
 
 // Static function declarations
 /////////////////////////////////////////////////////////////////////////////
@@ -48,17 +50,6 @@ static void ThreadEntry( uint32_t aInput );
 
 // Entry points
 /////////////////////////////////////////////////////////////////////////////
-
-/* void _close ( void )        { assert( false ); }
-void _exit  ( int aStatus ) { for ( ;; ); }
-void _fstat ( void )        { assert( false ); }
-void _getpid( void )        { assert( false ); }
-void _isatty( void )        { assert( false ); }
-void _kill  ( void )        { assert( false ); }
-void _lseek ( void )        { assert( false ); }
-void _read  ( void )        { assert( false ); }
-void _sbrk  ( void )        { assert( false ); }
-void _write ( void )        { assert( false ); } */
 
 int main( void )
 {
@@ -87,7 +78,7 @@ int main( void )
     lStatus = CyU3PDeviceConfigureIOMatrix( & lIoCfg );
     ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PKernelEntry ();
+    CyU3PKernelEntry();
 
     // Dummy return to make the compiler happy
     return 0;
@@ -95,14 +86,14 @@ int main( void )
 
 void CyFxApplicationDefine( void )
 {
-    void   * lPtr;
-    uint32_t lRet;
+    void   * lPtr   ;
+    uint32_t lStatus;
 
-    lPtr = CyU3PMemAlloc( THREAD_STACK );
+    lPtr = CyU3PMemAlloc( THREAD_STACK_byte );
     ASSERT( NULL != lPtr );
 
-    lRet = CyU3PThreadCreate( & sThread, "31:EP0 Thread", ThreadEntry, 0, lPtr, THREAD_STACK, THREAD_PRIORITY, THREAD_PRIORITY, CYU3P_NO_TIME_SLICE, CYU3P_AUTO_START );
-    ASSERT( 0 == lRet );
+    lStatus = CyU3PThreadCreate( & sThread, "31:EP0 Thread", ThreadEntry, 0, lPtr, THREAD_STACK_byte, THREAD_PRIORITY, THREAD_PRIORITY, CYU3P_NO_TIME_SLICE, CYU3P_AUTO_START );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
     Keyboard_Define();
 }
@@ -115,8 +106,6 @@ void Init( void )
     CyU3PReturnStatus_t  lStatus   ;
     CyU3PGpioClock_t     lGpioClock;
     CyU3PPibClock_t      lPibClock ;
-
-    sConnected = CyFalse;
 
     lGpioClock.fastClkDiv = 2;
     lGpioClock.slowClkDiv = 2;
@@ -143,19 +132,31 @@ void Init( void )
 
     CyU3PUsbRegisterLPMRequestCallback( OnLPMRequest );
 
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_HS_DEVICE_DESCR, 0, (uint8_t *)( Desc_Device_HS ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_DEVICE_DESCR, 0, (uint8_t *)( Desc_Device_SS ) );
+    // const_cast
 
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_DEVQUAL_DESCR, 0, (uint8_t *)( Desc_Device_Qual ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_BOS_DESCR , 0, (uint8_t *)( Desc_BOS         ) );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_HS_DEVICE_DESCR, 0, (uint8_t *)( Desc_Device_HS           ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_DEVICE_DESCR, 0, (uint8_t *)( Desc_Device_SS           ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_HS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_HS ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_FS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_FS ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_SS ) );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_DEVQUAL_DESCR  , 0, (uint8_t *)( Desc_Device_Qual         ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_BOS_DESCR   , 0, (uint8_t *)( Desc_BOS                 ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR, 0, (uint8_t *)( Desc_LangId              ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR, 1, (uint8_t *)( Desc_String_Manufacturer ) );
-    CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR, 2, (uint8_t *)( Desc_String_Product      ) );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_FS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_FS           ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_HS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_HS_SS        ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_SS_CONFIG_DESCR, 0, (uint8_t *)( Desc_Config_HS_SS        ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR   , 0, (uint8_t *)( Desc_LangId              ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR   , 1, (uint8_t *)( Desc_String_Manufacturer ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
+    lStatus = CyU3PUsbSetDesc( CY_U3P_USB_SET_STRING_DESCR   , 2, (uint8_t *)( Desc_String_Product      ) );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
     lStatus = CyU3PConnectState( CyTrue, CyTrue );
     ASSERT( CY_U3P_SUCCESS == lStatus );
@@ -176,26 +177,26 @@ void OnEvent( CyU3PUsbEventType_t aEvType, uint16_t aEvData )
 
     case CY_U3P_USB_EVENT_DISCONNECT:
         sConfigured = CyFalse;
-        sConnected  = CyFalse;
         break;
 
     case CY_U3P_USB_EVENT_SETCONF:
         if ( aEvData == 0 )
         {
             sConfigured = CyFalse;
-            break;
         }
-
-        if ( sConfigured == CyFalse )
+        else
         {
-            sConfigured = CyTrue;
-        }
+            if ( sConfigured == CyFalse )
+            {
+                sConfigured = CyTrue;
+            }
 
-        Keyboard_SetConf();
+            Keyboard_SetConf();
+        }
         break;
 
     default:
-    	break;
+        break;
     }
 }
 
@@ -229,6 +230,23 @@ CyBool_t OnSetup( uint32_t aData0, uint32_t aData1 )
 
 CyBool_t ProcessDeviceRequest( uint32_t aData0, uint32_t aData1 )
 {
+    uint8_t  lRequest = (uint8_t )( ( aData0 & USB_SETUP_REQ_MASK ) >>  8 );
+    switch ( lRequest )
+    {
+    case CY_U3P_USB_SC_CLEAR_FEATURE     :
+    case CY_U3P_USB_SC_GET_DESCRIPTOR    :
+    case CY_U3P_USB_SC_SET_CONFIGURATION :
+    case CY_U3P_USB_SC_SET_FEATURE       :
+        break;
+
+    default : ASSERT( false );
+    }
+
+    return CyFalse;
+}
+
+CyBool_t ProcessEndPointRequest( uint32_t aData0, uint32_t aData1 )
+{
     uint16_t  lIndex  ;
     uint8_t   lRequest;
     CyBool_t  lResult = CyFalse;
@@ -238,57 +256,39 @@ CyBool_t ProcessDeviceRequest( uint32_t aData0, uint32_t aData1 )
     lRequest = (uint8_t )( ( aData0 & USB_SETUP_REQ_MASK    ) >>  8 );
     lValue   = (uint16_t)( ( aData0 & USB_SETUP_VALUE_MASK  ) >> 16 );
 
-	switch ( lRequest )
-	{
-	case CY_U3P_USB_SC_GET_DESCRIPTOR    :
-	case CY_U3P_USB_SC_SET_CONFIGURATION :
-		break;
-
-	default : ASSERT( false );
-    }
-
-	return lResult;
-}
-
-CyBool_t ProcessEndPointRequest( uint32_t aData0, uint32_t aData1 )
-{
-    uint16_t  lIndex  ;
-    uint8_t   lRequest;
-    CyBool_t  lResult ;
-    uint16_t  lValue  ;
-
-    lIndex   = (uint16_t)(   aData1 & USB_SETUP_INDEX_MASK          );
-    lRequest = (uint8_t )( ( aData0 & USB_SETUP_REQ_MASK    ) >>  8 );
-    lValue   = (uint16_t)( ( aData0 & USB_SETUP_VALUE_MASK  ) >> 16 );
-
     switch ( lRequest )
-	{
+    {
     case CY_U3P_USB_SC_CLEAR_FEATURE:
-		if ( lValue == CY_U3P_USBX_FS_EP_HALT )
-		{
-			lResult = Keyboard_ClearFeature( lIndex );
-			if ( lResult )
-			{
-				CyU3PUsbStall( lIndex, CyFalse, CyTrue );
-				CyU3PUsbAckSetup();
-			}
-		}
-		break;
+        if ( lValue == CY_U3P_USBX_FS_EP_HALT )
+        {
+            lResult = Keyboard_ClearFeature( lIndex );
+            if ( lResult )
+            {
+                CyU3PReturnStatus_t  lStatus   ;
+
+                lStatus = CyU3PUsbStall( lIndex, CyFalse, CyTrue );
+                ASSERT( CY_U3P_SUCCESS == lStatus );
+
+                CyU3PUsbAckSetup();
+            }
+        }
+        break;
 
     default: ASSERT( false );
-	}
+    }
 
-	return lResult;
+    return lResult;
 }
 
 CyBool_t ProcessInterfaceRequest( uint32_t aData0, uint32_t aData1 )
 {
-    uint16_t  lIndex  ;
-    uint8_t   lRequest = CyFalse;
-    uint8_t   lReqType;
-    CyBool_t  lResult ;
-    uint8_t   lType   ;
-    uint16_t  lValue  ;
+    uint16_t             lIndex  ;
+    uint8_t              lRequest = CyFalse;
+    uint8_t              lReqType;
+    CyBool_t             lResult ;
+    CyU3PReturnStatus_t  lStatus ;
+    uint8_t              lType   ;
+    uint16_t             lValue  ;
 
     lIndex   = (uint16_t)(   aData1 & USB_SETUP_INDEX_MASK          );
     lReqType =           (   aData0 & CY_U3P_USB_REQUEST_TYPE_MASK  );
@@ -298,64 +298,61 @@ CyBool_t ProcessInterfaceRequest( uint32_t aData0, uint32_t aData1 )
 
     switch ( lType )
     {
-	case CY_U3P_USB_CLASS_RQT : lResult = Keyboard_ProcessRequest( aData0, aData1 ); break;
+    case CY_U3P_USB_CLASS_RQT : lResult = Keyboard_ProcessRequest( aData0, aData1 ); break;
 
     case CY_U3P_USB_STANDARD_RQT :
-		switch ( lRequest )
-		{
-		case CY_U3P_USB_SC_GET_DESCRIPTOR :
-			if ( ( lValue >> 8 ) == 0x22 )
-			{
-			    uint32_t lStatus;
+        switch ( lRequest )
+        {
+        case CY_U3P_USB_SC_GET_DESCRIPTOR :
+            if ( ( lValue >> 8 ) == 0x22 )
+            {
+                lResult = CyTrue;
 
-				lResult = CyTrue;
+                switch ( lIndex )
+                {
+                case 0 : lStatus = CyU3PUsbSendEP0Data( DESC_REPORT_KEYBOARD_SIZE_byte, (uint8_t *)( Desc_Report_Keyboard ) ); break;
 
-				switch ( lIndex )
-				{
-				case 0 : lStatus = CyU3PUsbSendEP0Data( DESC_REPORT_KEYBOARD_SIZE_byte, (uint8_t *)( Desc_Report_Keyboard ) ); break;
+                default : lStatus = CY_U3P_ERROR_NOT_SUPPORTED;
+                }
 
-				#ifdef _CONSUMER_CONTROL_
-	        		case 1 : lStatus = CyU3PUsbSendEP0Data( DESC_REPORT_CONSUMER_CONTROL_SIZE_byte, (uint8_t *)( Desc_Report_Consumer_Control ) ); break;
-				#endif
+                if ( lStatus != CY_U3P_SUCCESS )
+                {
+                    lStatus = CyU3PUsbStall( 0, CyTrue, CyFalse );
+                    ASSERT( CY_U3P_SUCCESS == lStatus );
+                }
+            }
+            break;
 
-	        	default : lStatus = CY_U3P_ERROR_NOT_SUPPORTED;
-				}
+        case CY_U3P_USB_SC_SET_FEATURE :
+            if ( ( lValue == 0 ) && ( lIndex == 1 ) )
+            {
+                if ( sConfigured )
+                {
+                    CyU3PUsbAckSetup();
+                }
+                else
+                {
+                    lStatus = CyU3PUsbStall( 0, CyTrue, CyFalse );
+                    ASSERT( CY_U3P_SUCCESS == lStatus );
+                }
 
-				if ( lStatus != CY_U3P_SUCCESS )
-				{
-					CyU3PUsbStall( 0, CyTrue, CyFalse );
-				}
-			}
-			break;
+                lResult = CyTrue;
+            }
+            break;
 
-		case CY_U3P_USB_SC_SET_FEATURE :
-			if ( ( lValue == 0 ) && ( lIndex == 1 ) )
-			{
-				if ( sConfigured )
-				{
-					CyU3PUsbAckSetup();
-				}
-				else
-				{
-					CyU3PUsbStall( 0, CyTrue, CyFalse );
-				}
+        case CY_U3P_USB_SC_SET_INTERFACE :
+            lStatus = CyU3PUsbStall( 0, CyTrue, CyFalse );
+            ASSERT( CY_U3P_SUCCESS == lStatus );
+            break;
 
-				lResult = CyTrue;
-			}
-			break;
+        default : ASSERT( false );
+        }
+        break;
 
-		case CY_U3P_USB_SC_SET_INTERFACE :
-			CyU3PUsbStall( 0, CyTrue, CyFalse );
-			break;
-
-		default : ASSERT( false );
-		}
-		break;
-
-	default : ASSERT( false );
+    default : ASSERT( false );
     }
 
-	return lResult;
+    return lResult;
 }
 
 void ThreadEntry( uint32_t aInput )
@@ -364,15 +361,6 @@ void ThreadEntry( uint32_t aInput )
 
     for (;;)
     {
-        if ( ! sConnected )
-        {
-            sSpeed = CyU3PUsbGetSpeed();
-            if ( CY_U3P_NOT_CONNECTED != sSpeed )
-            {
-                sConnected = CyTrue;
-            }
-        }
-
-        CyU3PThreadRelinquish ();
+        CyU3PThreadRelinquish();
     }
 }

@@ -3,19 +3,12 @@
 // Product  FX3-KB
 // File     HID.h
 
+// CODE REVIEW  2019-07-01  KMS - Martin Dubois, ing.
+
 #pragma once
 
 // Constants
 /////////////////////////////////////////////////////////////////////////////
-
-#define HID_LEFT_CTRL    ( 0x01 )
-#define HID_LEFT_SHIFT   ( 0x02 )
-#define HID_LEFT_ALT     ( 0x04 )
-#define HID_LEFT_GUI     ( 0x08 )
-#define HID_RIGHT_CTRL   ( 0x10 )
-#define HID_RIGHT_SHIFT  ( 0x20 )
-#define HID_RIGHT_ALT    ( 0x40 )
-#define HID_RIGHT_GUI    ( 0x80 )
 
 // ===== Key ================================================================
 
@@ -74,7 +67,41 @@
 
 #define HID_KEY_F13_F24(N)  ( 0x68 + ( N ) - 13 )
 
-// ===== Request ============================================================
+// ===== Modifier ===========================================================
+#define HID_MODIFIER_LEFT_CTRL    ( 0x01 )
+#define HID_MODIFIER_LEFT_SHIFT   ( 0x02 )
+#define HID_MODIFIER_LEFT_ALT     ( 0x04 )
+#define HID_MODIFIER_LEFT_GUI     ( 0x08 )
+#define HID_MODIFIER_RIGHT_CTRL   ( 0x10 )
+#define HID_MODIFIER_RIGHT_SHIFT  ( 0x20 )
+#define HID_MODIFIER_RIGHT_ALT    ( 0x40 )
+#define HID_MODIFIER_RIGHT_GUI    ( 0x80 )
 
+// ===== Request ============================================================
 #define HID_REQUEST_SET_REPORT  ( 0x09 )
 #define HID_REQUEST_SET_IDLE    ( 0x0a )
+
+// ===== Tag ================================================================
+#define HID_TAG_USAGE_PAGE       ( 0x05 )
+#define HID_TAG_USAGE            ( 0x09 )
+#define HID_TAG_LOGICAL_MINIMUM  ( 0x15 )
+#define HID_TAG_USAGE_MINIMUM    ( 0x19 )
+#define HID_TAG_LOGICAL_MAXIMUM  ( 0x25 )
+#define HID_TAG_USAGE_MAXIMUM    ( 0x29 )
+#define HID_TAG_REPORT_SIZE_bit  ( 0x75 )
+#define HID_TAG_INPUT            ( 0x81 )
+#define HID_TAG_REPORT_ID        ( 0x85 )
+#define HID_TAG_OUTPUT           ( 0x91 )
+#define HID_TAG_REPORT_COUNT     ( 0x95 )
+#define HID_TAG_COLLECTION       ( 0xa1 )
+#define HID_TAG_END              ( 0xc0 )
+
+// ===== Usage page =========================================================
+#define HID_UP_GENERIC_DESKTOP  ( 0x01 )
+#define HID_UP_KEYBOARD         ( 0x07 )
+#define HID_UP_LED              ( 0x08 )
+
+// Functions
+/////////////////////////////////////////////////////////////////////////////
+
+extern uint8_t HID_KeyFromChar( char aC, uint8_t * aModifier );

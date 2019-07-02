@@ -3,6 +3,8 @@
 // Product  FX3-KB
 // File     Component.h
 
+// CODE REVIEW  2019-07-01  KMS - Martin Dubois, ing.
+
 // Includes
 /////////////////////////////////////////////////////////////////////////////
 
@@ -11,6 +13,9 @@
 // Function
 /////////////////////////////////////////////////////////////////////////////
 
+// aLine  The line of the assertion
+//
+// TODO  Component  Output the line number on a led or IO
 void Component_AssertFailure( unsigned int aLine )
 {
 	volatile unsigned int lCount;

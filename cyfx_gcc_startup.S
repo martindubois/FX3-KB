@@ -3,6 +3,8 @@
 # Product  FX3-KB
 # File     cyfx_gcc_startup.S
 
+# CODE REVIEW  2019-07-01  KMS - Martin Dubois, ing.
+
 .section .text
 .code 32
 

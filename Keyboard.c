@@ -3,6 +3,8 @@
 // Product  FX3-KB
 // File     Keyboard.c
 
+// CODE REVIEW  2019-07-01  KMS - Martin Dubois, ing.
+
 // Includes
 /////////////////////////////////////////////////////////////////////////////
 
@@ -12,6 +14,7 @@
 #include <cyu3usb.h>
 #include <cyu3utils.h>
 
+#include "Desc.h"
 #include "HID.h"
 #include "USB.h"
 
@@ -22,8 +25,8 @@
 
 #define EP_INTR_IN  0x81
 
-#define THREAD_STACK     (0x1000)
-#define THREAD_PRIORITY  (8)
+#define THREAD_STACK_byte  (0x1000)
+#define THREAD_PRIORITY    (8)
 
 // Static variables
 /////////////////////////////////////////////////////////////////////////////
@@ -35,11 +38,11 @@ static CyU3PThread     sThread;
 // Static function declarations
 /////////////////////////////////////////////////////////////////////////////
 
-static void Key     ( uint8_t aModifier, uint8_t aKey );
-static void Key_Down( uint8_t aModifier, uint8_t aKey );
-static void Key_Up  ( uint8_t aModifier );
+static void                Send_Complete();
+static CyU3PReturnStatus_t Send_Prepare ( CyU3PDmaBuffer_t * aOutBuf );
 
-static void SendReport( uint8_t aModifier, uint8_t aKey );
+static void SendReport_Control( uint8_t aBitMask );
+static void SendReport_Key    ( uint8_t aModifier, uint8_t aKey );
 
 static void Start( void );
 static void Stop ( void );
@@ -49,37 +52,132 @@ static void ThreadEntry( uint32_t aInput );
 // Functions
 /////////////////////////////////////////////////////////////////////////////
 
+// aModifier  See HID_MODIFIER_...
+// aKey       See HID_KEY_...
+void Key( uint8_t aModifier, uint8_t aKey )
+{
+    ASSERT( 0 != aKey );
+
+    Key_Down( aModifier, aKey );
+    Key_Up  ( aModifier );
+}
+
+// aC  The char to send
+void Key_Char( char aC )
+{
+    ASSERT(    0 < aC );
+    ASSERT( 0x80 > aC );
+
+    uint8_t lKey     ;
+    uint8_t lModifier;
+
+    lKey = HID_KeyFromChar( aC, & lModifier );
+
+    Key( lModifier, lKey );
+}
+
+// aModifier  See HID_MODIFIER_...
+// aKey       See HID_KEY_...
+void Key_Down( uint8_t aModifier, uint8_t aKey )
+{
+    ASSERT( 0 != aKey );
+
+    SendReport_Key( aModifier, aKey );
+}
+
+void Key_Hibernate()
+{
+    SendReport_Control( DESC_CONTROL_HIBERNATE );
+    SendReport_Control(                      0 );
+}
+
+void Key_PowerDown()
+{
+    SendReport_Control( DESC_CONTROL_POWER_DOWN );
+    SendReport_Control(                       0 );
+}
+
+void Key_Sleep()
+{
+    SendReport_Control( DESC_CONTROL_SLEEP );
+    SendReport_Control(                  0 );
+}
+
+// aStr  The string to send
+void Key_String( const char * aStr )
+{
+    ASSERT( NULL != aStr );
+
+    while ( '\0' != ( * aStr ) )
+    {
+        Key_Char( * aStr );
+
+        aStr ++;
+    }
+}
+
+// aModifier  See HID_MODIFIER_...
+void Key_Up( uint8_t aModifier )
+{
+    SendReport_Key( aModifier, 0 );
+}
+
+void Key_Wakeup()
+{
+    SendReport_Control( DESC_CONTROL_WAKEUP );
+    SendReport_Control(                   0 );
+}
+
+// aIndex  The index part of the setup packet. It contains the end point
+//         address.
+//
+// Return
+//  CyFalse  Not handled
+//  CyTrue   Handled
 CyBool_t Keyboard_ClearFeature( uint16_t aIndex )
 {
-	 if ( ( aIndex == EP_INTR_IN ) && sActive )
-	{
-		CyU3PDmaChannelReset( & sChHandleIntrCPU2U );
+     if ( ( aIndex == EP_INTR_IN ) && sActive )
+    {
+        CyU3PReturnStatus_t  lStatus;
 
-		CyU3PUsbFlushEp( EP_INTR_IN );
-		CyU3PUsbResetEp( EP_INTR_IN );
+        lStatus = CyU3PDmaChannelReset( & sChHandleIntrCPU2U );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
 
-		return CyTrue;
-	}
+        lStatus = CyU3PUsbFlushEp( EP_INTR_IN );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
 
-	return CyFalse;
+        lStatus = CyU3PUsbResetEp( EP_INTR_IN );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
+
+        return CyTrue;
+    }
+
+    return CyFalse;
 }
 
 void Keyboard_Define( void )
 {
-	void   * lPtr;
-    uint32_t lRet;
+    void   * lPtr   ;
+    uint32_t lStatus;
 
-    lPtr = CyU3PMemAlloc( THREAD_STACK );
+    lPtr = CyU3PMemAlloc( THREAD_STACK_byte );
+    ASSERT( NULL != lPtr );
 
-    lRet = CyU3PThreadCreate( & sThread, "30:Keyboard Thread", ThreadEntry, 0, lPtr, THREAD_STACK, THREAD_PRIORITY, THREAD_PRIORITY, CYU3P_NO_TIME_SLICE, CYU3P_AUTO_START );
-    ASSERT( 0 == lRet );
+    lStatus = CyU3PThreadCreate( & sThread, "30:Keyboard Thread", ThreadEntry, 0, lPtr, THREAD_STACK_byte, THREAD_PRIORITY, THREAD_PRIORITY, CYU3P_NO_TIME_SLICE, CYU3P_AUTO_START );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 }
 
+// aData0  The first part of the setup packet
+// aData1  The second part of the setup packet
+//
+// Return
+//  CyFalse  Not handled
+//  CyTrue   Handled
 CyBool_t Keyboard_ProcessRequest( uint32_t aData0, uint32_t aData1 )
 {
-	uint8_t              lBuffer[ 16 ];
-	uint16_t             lLength_byte;
-	uint16_t             lInfo_byte  ;
+    uint8_t              lBuffer[ 16 ];
+    uint16_t             lLength_byte;
+    uint16_t             lInfo_byte  ;
     uint8_t              lRequest    ;
     CyBool_t             lResult     ;
     CyU3PReturnStatus_t  lStatus     ;
@@ -90,22 +188,22 @@ CyBool_t Keyboard_ProcessRequest( uint32_t aData0, uint32_t aData1 )
     switch ( lRequest )
     {
     case HID_REQUEST_SET_IDLE   :
-		CyU3PUsbAckSetup();
-    	lResult = true;
-    	break;
+        CyU3PUsbAckSetup();
+        lResult = true;
+        break;
 
     case HID_REQUEST_SET_REPORT :
-    	ASSERT(                 0 <  lLength_byte );
-    	ASSERT( sizeof( lBuffer ) >= lLength_byte );
+        ASSERT(                 0 <  lLength_byte );
+        ASSERT( sizeof( lBuffer ) >= lLength_byte );
 
-    	lStatus = CyU3PUsbGetEP0Data( sizeof( lBuffer ), lBuffer, & lInfo_byte );
-    	ASSERT( CY_U3P_SUCCESS == lStatus );
+        lStatus = CyU3PUsbGetEP0Data( sizeof( lBuffer ), lBuffer, & lInfo_byte );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    	ASSERT(                 0 <  lInfo_byte );
-    	ASSERT( sizeof( lBuffer ) >= lInfo_byte );
+        ASSERT(                 0 <  lInfo_byte );
+        ASSERT( sizeof( lBuffer ) >= lInfo_byte );
 
-    	lResult = true;
-    	break;
+        lResult = true;
+        break;
 
     default : ASSERT( false );
     }
@@ -115,18 +213,18 @@ CyBool_t Keyboard_ProcessRequest( uint32_t aData0, uint32_t aData1 )
 
 void Keyboard_Reset( void )
 {
-	if ( sActive )
-	{
-	    Stop();
-	}
+    if ( sActive )
+    {
+        Stop();
+    }
 }
 
 void Keyboard_SetConf( void )
 {
-	if ( sActive )
-	{
-	    Stop();
-	}
+    if ( sActive )
+    {
+        Stop();
+    }
 
     Start();
 }
@@ -134,66 +232,92 @@ void Keyboard_SetConf( void )
 // Static functions
 /////////////////////////////////////////////////////////////////////////////
 
-void Key( uint8_t aModifier, uint8_t aKey )
+void Send_Complete()
 {
-	ASSERT( 0 != aKey );
+    CyU3PReturnStatus_t lStatus;
 
-	Key_Down( aModifier, aKey );
-	Key_Up  ( aModifier );
+    lStatus = CyU3PDmaChannelCommitBuffer( & sChHandleIntrCPU2U, 8, 0 );
+    if ( CY_U3P_SUCCESS != lStatus )
+    {
+        lStatus = CyU3PDmaChannelReset  ( & sChHandleIntrCPU2U );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
+
+        lStatus = CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
+        ASSERT( CY_U3P_SUCCESS == lStatus );
+    }
+
+    CyU3PBusyWait( 2000 );
 }
 
-void Key_Down( uint8_t aModifier, uint8_t aKey )
+CyU3PReturnStatus_t Send_Prepare( CyU3PDmaBuffer_t * aOutBuf )
 {
-	ASSERT( 0 != aKey );
+    CyU3PReturnStatus_t lResult;
 
-	SendReport( aModifier, aKey );
+    ASSERT( NULL != aOutBuf );
+
+    aOutBuf->buffer =  0;
+    aOutBuf->status =  0;
+    aOutBuf->size   = 16;
+    aOutBuf->count  =  8;
+
+    lResult = CyU3PDmaChannelGetBuffer( & sChHandleIntrCPU2U, aOutBuf, 1000 );
+    if ( CY_U3P_SUCCESS != lResult )
+    {
+        lResult = CyU3PDmaChannelReset( & sChHandleIntrCPU2U );
+        // ASSERT( CY_U3P_SUCCESS == lResult );
+        // CyU3PDmaChannelReset return CY_U3P_ERROR_BAD_ARGUMENT (64)
+
+        lResult = CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
+        ASSERT( CY_U3P_SUCCESS == lResult );
+
+        lResult = CyU3PDmaChannelGetBuffer( & sChHandleIntrCPU2U, aOutBuf, 1000 );
+    }
+
+    if ( CY_U3P_SUCCESS == lResult )
+    {
+        unsigned int i;
+
+        ASSERT( NULL != aOutBuf->buffer );
+
+        CyU3PBusyWait( 2000 );
+
+        for ( i = 0; i < 8; i ++ )
+        {
+            aOutBuf->buffer[ i ] = 0;
+        }
+    }
+
+    return lResult;
 }
 
-void Key_Up( uint8_t aModifier )
-{
-	SendReport( aModifier, 0 );
-}
-
-void SendReport( uint8_t aModifier, uint8_t aKey )
+void SendReport_Control( uint8_t aBitMask )
 {
     CyU3PDmaBuffer_t    lOutBuf;
     CyU3PReturnStatus_t lStatus;
 
-    lOutBuf.buffer = 0;
-    lOutBuf.status = 0;
-    lOutBuf.size   = 8;
-    lOutBuf.count  = 8;
-
-    lStatus = CyU3PDmaChannelGetBuffer( & sChHandleIntrCPU2U, & lOutBuf, 1000 );
-    if ( CY_U3P_SUCCESS != lStatus )
-    {
-        CyU3PDmaChannelReset  ( & sChHandleIntrCPU2U );
-        CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
-
-        lStatus = CyU3PDmaChannelGetBuffer( & sChHandleIntrCPU2U, & lOutBuf, 1000 );
-    }
-
+    lStatus = Send_Prepare( & lOutBuf );
     if ( CY_U3P_SUCCESS == lStatus )
     {
-    	CyU3PBusyWait( 2000 );
+        lOutBuf.buffer[ 0 ] = DESC_REPORT_CONTROL;
+        lOutBuf.buffer[ 1 ] = aBitMask;
 
-    	lOutBuf.buffer[ 0 ] = aModifier;
-    	lOutBuf.buffer[ 1 ] = 0;
-    	lOutBuf.buffer[ 2 ] = aKey;
-    	lOutBuf.buffer[ 3 ] = 0;
-    	lOutBuf.buffer[ 4 ] = 0;
-    	lOutBuf.buffer[ 5 ] = 0;
-    	lOutBuf.buffer[ 6 ] = 0;
-    	lOutBuf.buffer[ 7 ] = 0;
+        Send_Complete();
+    }
+}
 
-    	lStatus = CyU3PDmaChannelCommitBuffer( & sChHandleIntrCPU2U, 8, 0 );
-    	if ( CY_U3P_SUCCESS != lStatus )
-    	{
-        	CyU3PDmaChannelReset  ( & sChHandleIntrCPU2U );
-        	CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
-    	}
+void SendReport_Key( uint8_t aModifier, uint8_t aKey )
+{
+    CyU3PDmaBuffer_t    lOutBuf;
+    CyU3PReturnStatus_t lStatus;
 
-    	CyU3PBusyWait( 2000 );
+    lStatus = Send_Prepare( & lOutBuf );
+    if ( CY_U3P_SUCCESS == lStatus )
+    {
+        lOutBuf.buffer[ 0 ] = DESC_REPORT_KEY;
+        lOutBuf.buffer[ 1 ] = aModifier;
+        lOutBuf.buffer[ 3 ] = aKey;
+
+        Send_Complete();
     }
 }
 
@@ -230,9 +354,11 @@ void Start( void )
     lStatus = CyU3PDmaChannelCreate( & sChHandleIntrCPU2U, CY_U3P_DMA_TYPE_MANUAL_OUT, & lDmaCfg );
     ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
+    lStatus = CyU3PDmaChannelSetXfer( & sChHandleIntrCPU2U, 0 );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PUsbFlushEp( EP_INTR_IN );
+    lStatus = CyU3PUsbFlushEp( EP_INTR_IN );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
     sActive = CyTrue;
 }
@@ -244,9 +370,11 @@ void Stop( void )
 
     sActive = CyFalse;
 
-    CyU3PUsbFlushEp( EP_INTR_IN );
+    lStatus = CyU3PUsbFlushEp( EP_INTR_IN );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    CyU3PDmaChannelDestroy( & sChHandleIntrCPU2U );
+    lStatus = CyU3PDmaChannelDestroy( & sChHandleIntrCPU2U );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
     CyU3PMemSet( ( uint8_t * )( & lEpCfg ), 0, sizeof( lEpCfg ) );
 
@@ -258,26 +386,12 @@ void Stop( void )
 
 void ThreadEntry( uint32_t aInput )
 {
-	uint8_t lModifier = 0;
+    uint32_t lStatus;
 
-    CyU3PThreadSleep( 10000 );
+    // We let 4 seconds for the operating system to detect the device and
+    // completely load the driver.
+    lStatus = CyU3PThreadSleep( 4000 );
+    ASSERT( CY_U3P_SUCCESS == lStatus );
 
-    for ( ; ; )
-    {
-        CyU3PThreadSleep( 10000 );
-
-        lModifier = HID_LEFT_SHIFT;
-
-        Key( lModifier, HID_KEY_LETTER( 'M' ) );
-
-        lModifier = 0;
-
-        Key( lModifier, HID_KEY_LETTER( 'A' ) );
-        Key( lModifier, HID_KEY_LETTER( 'R' ) );
-        Key( lModifier, HID_KEY_LETTER( 'T' ) );
-        Key( lModifier, HID_KEY_LETTER( 'I' ) );
-        Key( lModifier, HID_KEY_LETTER( 'N' ) );
-
-        Key( lModifier, HID_KEY_ENTER );
-    }
+    Payload();
 }
