@@ -20,7 +20,7 @@ difference()
       cube( [ SizeX_mm, 3, SizeZ_mm - PlateZ_mm ] );
 
     translate( [            0,                 3, PlateZ_mm ] )
-      cube( [        5,  8, SizeZ_mm - PlateZ_mm ] );
+      cube( [        5,  17, SizeZ_mm - PlateZ_mm ] );
     translate( [            0, SizeY_mm -  9 - 3, PlateZ_mm ] )
       cube( [        5,  9, SizeZ_mm - PlateZ_mm ] );
     translate( [ SizeX_mm - 4,                 3, PlateZ_mm ] )
@@ -31,8 +31,8 @@ difference()
     translate( [ 0, SizeY_mm - 11 - 9 - 3, PlateZ_mm ] )
       cube( [ 3, 11, SizeZ_mm - PlateZ_mm - 3 ] );
 
-    translate( [ SizeX_mm - 3, SizeY_mm - 24 - 12 - 3, PlateZ_mm ] )
-      cube( [ 3, 24, SizeZ_mm - PlateZ_mm - 3 ] );
+    translate( [ SizeX_mm - 3, SizeY_mm - 32 - 12 - 3, PlateZ_mm ] )
+      cube( [ 3, 32, SizeZ_mm - PlateZ_mm - 3 ] );
 
     translate( [ 40, 32, PlateZ_mm ] )
       cube( [ 12, 9, SizeZ_mm - PlateZ_mm - 2 ] );
@@ -48,8 +48,8 @@ difference()
       cube( [ 21, 13, PlateZ_mm + 2 ] );
 
     // SRAM_ENABLE jumber j5
-    translate( [ SizeX_mm - 1, 10, 1 ] )
-      cube( [ 6, 3, SizeZ_mm ] );
+    translate( [ SizeX_mm - 1 - 3, 10, 4 ] )
+      cube( [ 3, 6, SizeZ_mm ] );
 
     // PMODE jumber j4
     translate( [ 43, 35, -1 ] )
@@ -64,6 +64,6 @@ difference()
 
     // Jumber j1
     translate( [ -1, 11, -1 ] )
-      cube( [ 4, 6, Size_Z_mm ] );
+      cube( [ 4, 6, SizeZ_mm + 2 ] );
   }
 }
