@@ -12,6 +12,12 @@ SizeY_mm = 56  ;
 // Modules
 /////////////////////////////////////////////////////////////////////////////
 
+module LessPlastic()
+{
+    translate( [                   8, 4, 3 ] ) cube( [ 32  , SizeY_mm - 2 * 4, 5 ] );
+    translate( [ SizeX_mm - 22.3 - 8, 4, 3 ] ) cube( [ 22.3, SizeY_mm - 2 * 4, 5 ] );
+}
+
 module MountHoles()
 {
     union()
