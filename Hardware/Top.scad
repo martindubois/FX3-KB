@@ -5,8 +5,8 @@
 
 include <Common.scad>
 
-PlateZ_mm =  7;
-SizeZ_mm  = 13;
+PlateZ_mm =  7  ;
+SizeZ_mm  = 12.5;
 
 difference()
 {
@@ -35,7 +35,7 @@ difference()
       cube( [ 3, 32, SizeZ_mm - PlateZ_mm - 3 ] );
 
     translate( [ 40, 32, PlateZ_mm ] )
-      cube( [ 12, 9, SizeZ_mm - PlateZ_mm - 2 ] );
+      cube( [ 12, 9, SizeZ_mm - PlateZ_mm - 2.5 ] );
   }
 
 	 union()
@@ -45,10 +45,10 @@ difference()
 
     // USB 3.0 connector
     translate( [ -1, 20, -1 ] )
-      cube( [ 21, 13, PlateZ_mm + 2 ] );
+      cube( [ 20, 13, PlateZ_mm + 2 ] );
 
     // SRAM_ENABLE jumber j5
-    translate( [ SizeX_mm - 1 - 3, 10, 4 ] )
+    translate( [ SizeX_mm - 1 - 3, 10, 3.5 ] )
       cube( [ 3, 6, SizeZ_mm ] );
 
     // PMODE jumber j4
